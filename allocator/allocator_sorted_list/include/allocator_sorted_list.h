@@ -6,6 +6,7 @@
 #include <allocator_with_fit_mode.h>
 #include <iterator>
 #include <mutex>
+#include <cstddef>
 
 class allocator_sorted_list final:
     public smart_mem_resource,
@@ -17,9 +18,40 @@ private:
     
     void *_trusted_memory;
 
-    static constexpr const size_t allocator_metadata_size = sizeof(std::pmr::memory_resource *) + sizeof(fit_mode) + sizeof(size_t) + sizeof(std::mutex) + sizeof(void*);
+    struct allocator_header{
+        std::pmr::memory_resource *parent_allocator;
+        allocator_with_fit_mode::fit_mode mode;
+        size_t total_size;
+        std::mutex mtx;
+        void* first_free_block;
+    };
+    struct block_header{
+        void* next_free_block;
+        size_t block_size;
+    };
+    struct search_res{
+        block_header *target;
+        block_header *prev;
+    };
+
+    static constexpr const size_t allocator_metadata_size = sizeof(allocator_header);
 
     static constexpr const size_t block_metadata_size = sizeof(void*) + sizeof(size_t);
+
+    inline allocator_header* get_header() const noexcept{
+        return reinterpret_cast<allocator_header*>(_trusted_memory);
+    }
+
+    inline std::mutex& get_mutex() const noexcept{
+        return get_header()->mtx;
+    }
+    inline std::byte* get_blocks_begin_ptr(){
+        return reinterpret_cast<std::byte*>(_trusted_memory)+allocator_metadata_size;
+    }
+
+    search_res first_fit(size_t size) const;
+    search_res best_fit(size_t size) const;
+    search_res worst_fit(size_t size) const;
 
 public:
 
