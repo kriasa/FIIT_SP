@@ -6,6 +6,7 @@
 #include <pp_allocator.h>
 #include <iterator>
 #include <mutex>
+#include <cstddef>
 
 class allocator_boundary_tags final :
     public smart_mem_resource,
@@ -14,11 +15,34 @@ class allocator_boundary_tags final :
 {
 
 private:
+    struct block_header{
+        size_t size;
+        block_header* prev_occupied;
+        block_header *next_occupied;
+        void *allocator_ptr;
+    };
+    struct allocator_header{
+        memory_resource *parent_allocator;
+        allocator_with_fit_mode::fit_mode mode;
+        size_t total_size;
+        std::mutex mtx;
+        block_header* first_occupied_block;
+    };
 
-    static constexpr const size_t allocator_metadata_size = sizeof(memory_resource*) + sizeof(allocator_with_fit_mode::fit_mode) +
-                                                            sizeof(size_t) + sizeof(std::mutex) + sizeof(void*);
+    struct search_res {
+        void* start;
+        size_t size;
+        block_header* prev;
+        block_header* next;
+    };
 
-    static constexpr const size_t occupied_block_metadata_size = sizeof(size_t) + sizeof(void*) + sizeof(void*) + sizeof(void*);
+    // static constexpr const size_t allocator_metadata_size = sizeof(memory_resource*) + sizeof(allocator_with_fit_mode::fit_mode) +
+    //                                                         sizeof(size_t) + sizeof(std::mutex) + sizeof(void*);
+
+    // static constexpr const size_t occupied_block_metadata_size = sizeof(size_t) + sizeof(void*) + sizeof(void*) + sizeof(void*);
+    static constexpr const size_t allocator_metadata_size = sizeof(allocator_header);
+
+    static constexpr const size_t occupied_block_metadata_size = sizeof(block_header);
 
     static constexpr const size_t free_block_metadata_size = 0;
 
@@ -68,6 +92,25 @@ private:
 
     std::vector<allocator_test_utils::block_info> get_blocks_info_inner() const override;
 
+    static inline allocator_header* get_header(void* trusted_memory) noexcept{
+        return reinterpret_cast<allocator_header*>(trusted_memory);
+    }
+    inline std::mutex& get_mutex() const noexcept{
+        return reinterpret_cast<allocator_header*>(_trusted_memory)->mtx;
+    }
+    static inline std::byte* get_blocks_begin_ptr(void* trusted_memory)noexcept {
+        return reinterpret_cast<std::byte*>(trusted_memory) + allocator_metadata_size;
+    }
+    static inline std::byte* get_end(void* trusted_memory)noexcept{
+        return reinterpret_cast<std::byte*>(trusted_memory) + get_header(trusted_memory)->total_size;
+    }
+    
+    search_res first_fit(size_t size) const;
+    search_res best_fit(size_t size) const;
+    search_res worst_fit(size_t size) const;
+
+    static inline size_t get_free_size(void* occupied_block, void* trusted_memory) noexcept;
+
 /** TODO: Highly recommended for helper functions to return references */
 
     class boundary_iterator
@@ -107,6 +150,9 @@ private:
         boundary_iterator();
 
         boundary_iterator(void* trusted);
+
+        block_header *get_prev_occupied() const noexcept;
+        block_header *get_next_occupied() const noexcept;
     };
 
     friend class boundary_iterator;

@@ -27,6 +27,11 @@ namespace __detail
 
         return ones_counter <= 1 ? index : index + 1;
     }
+
+    constexpr size_t power_size(unsigned char k) noexcept
+    {
+        return static_cast<size_t>(1) << k;
+    }
 }
 
 class allocator_buddies_system final:
@@ -44,19 +49,54 @@ private:
         unsigned char size : 7;
     };
 
+    struct allocator_header{
+        memory_resource *parent_allocator;
+        allocator_with_fit_mode::fit_mode mode;
+        unsigned char k;
+        std::mutex mtx;
+    };
+
+    struct occupied_block{
+        block_metadata block;
+        void *allocator_ptr;
+    };
+
     void *_trusted_memory;
 
     /**
      * TODO: You must improve it for alignment support
      */
 
-    static constexpr const size_t allocator_metadata_size = sizeof(allocator_dbg_helper*) + sizeof(fit_mode) + sizeof(unsigned char) + sizeof(std::mutex);
+    // static constexpr const size_t allocator_metadata_size = sizeof(allocator_dbg_helper*) + sizeof(fit_mode) + sizeof(unsigned char) + sizeof(std::mutex);
+    // static constexpr const size_t occupied_block_metadata_size = sizeof(block_metadata) + sizeof(void*);
 
-    static constexpr const size_t occupied_block_metadata_size = sizeof(block_metadata) + sizeof(void*);
+    static constexpr const size_t allocator_metadata_size = sizeof(allocator_header);
+
+    static constexpr const size_t occupied_block_metadata_size = sizeof(occupied_block);
 
     static constexpr const size_t free_block_metadata_size = sizeof(block_metadata);
 
     static constexpr const size_t min_k = __detail::nearest_greater_k_of_2(occupied_block_metadata_size);
+
+
+    static inline allocator_header* get_header(void* trusted_memory) noexcept{
+        return reinterpret_cast<allocator_header*>(trusted_memory);
+    }
+    inline std::mutex& get_mutex() const noexcept{
+        return reinterpret_cast<allocator_header*>(_trusted_memory)->mtx;
+    }
+    static inline std::byte* get_blocks_begin_ptr(void* trusted_memory)noexcept {
+        return reinterpret_cast<std::byte*>(trusted_memory) + allocator_metadata_size;
+    }
+    static inline std::byte* get_end(void* trusted_memory)noexcept{
+        return reinterpret_cast<std::byte*>(trusted_memory) + __detail::power_size(get_header(trusted_memory)->k) + allocator_metadata_size;
+    }
+
+    void* first_fit(size_t size) const;
+    void* best_fit(size_t size) const;
+    void* worst_fit(size_t size) const;
+
+    void* get_buddy(void* block) noexcept;
 
 public:
 

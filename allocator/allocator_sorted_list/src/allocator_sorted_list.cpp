@@ -42,16 +42,18 @@ allocator_sorted_list::allocator_sorted_list(
     if (space_size < allocator_metadata_size + block_metadata_size){
         throw std::bad_alloc();
     }
+    size_t total_size = space_size + allocator_metadata_size;
+
     if (parent_allocator != nullptr){
-        _trusted_memory = parent_allocator->allocate(space_size, alignof(std::max_align_t));
+        _trusted_memory = parent_allocator->allocate(total_size, alignof(std::max_align_t));
     }else{
-        _trusted_memory = ::operator new(space_size);
+        _trusted_memory = ::operator new(total_size);
     }
     auto *header = get_header();
     new (&(header->mtx)) std::mutex();
     header->parent_allocator = parent_allocator;
     header-> mode = allocate_fit_mode;
-    header->total_size = space_size;
+    header->total_size = total_size;
 
     auto *first_fr = reinterpret_cast<block_header*>(get_blocks_begin_ptr());
     first_fr->block_size = space_size - allocator_metadata_size;
