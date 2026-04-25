@@ -31,6 +31,9 @@ allocator_buddies_system::allocator_buddies_system(
 allocator_buddies_system &allocator_buddies_system::operator=(
     allocator_buddies_system &&other) noexcept
 {
+    if (this == &other) return *this;
+    
+    std::lock_guard lock(get_mutex());
     std::swap(_trusted_memory, other._trusted_memory);
     return *this;
 }

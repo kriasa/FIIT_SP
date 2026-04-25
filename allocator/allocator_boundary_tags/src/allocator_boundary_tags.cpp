@@ -162,7 +162,7 @@ void allocator_boundary_tags::do_deallocate_sm(
 
     auto *curr = reinterpret_cast<block_header*>(at_ptr - occupied_block_metadata_size);
 
-    if (curr->allocator_ptr != this){ 
+    if (curr->allocator_ptr != _trusted_memory){  // Проверяем: совпадает ли адрес памяти в блоке с тем, чем мы владеем сейчас
         throw std::logic_error(" block that does not belong to this allocator");
     }
 
